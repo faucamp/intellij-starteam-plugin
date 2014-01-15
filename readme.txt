@@ -1,9 +1,9 @@
-This is the StarTeam plugin for IntelliJ IDEA. JetBrains is no longer 
-developing or maintaining the plugin, so if you'd like to use the
-StarTeam integration, you're welcome to build this from source and
-hack on it to improve the functionality.
+This is a fork of the original IntelliJ StarTeam plugin, updated for
+use with the StarTeam 13 SDK and IntelliJ 12.
 
-The code has been updated for compatibility with IntelliJ IDEA 10.5.
+This is a hack-in-progress, and so is still buggy, however it may
+be useful to someone. 
 
-You need to place starteam-sdk.jar to the lib folder in order to build 
-the plugin.
+You need to place starteam130.jar in the lib directory in order to
+build this plugin.
+
