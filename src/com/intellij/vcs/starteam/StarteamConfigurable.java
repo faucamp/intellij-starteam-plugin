@@ -10,9 +10,9 @@ import com.intellij.openapi.vcs.VcsException;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.util.ArrayUtil;
-import com.starbase.starteam.Project;
-import com.starbase.starteam.Server;
-import com.starbase.starteam.View;
+import com.starteam.Project;
+import com.starteam.Server;
+import com.starteam.View;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;

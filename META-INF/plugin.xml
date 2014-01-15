@@ -1,10 +1,11 @@
 <idea-plugin version="2">
   <name>StarTeam Integration</name>
   <id>Starteam</id>
-  <version>1.0</version>
-  <vendor logo="/general/ijLogo.png">JetBrains</vendor>
+  <version>1.2</version>
+  <vendor>Francois Aucamp</vendor>
   <resource-bundle>com.intellij.vcs.starteam.StarteamBundle</resource-bundle>
   <category>VCS Integration</category>
+  <description>Adds StarTeam integration support</description>
   <depends>com.intellij.modules.vcs</depends>
   <depends>com.intellij.modules.ultimate</depends>
 
@@ -34,10 +35,11 @@
 
   <actions>
     <group id="StarteamGlobalGroup" class="com.intellij.vcs.starteam.actions.StarteamGroup" popup="true" >
-      <add-to-group group-id="VcsGroups" anchor="last"/>
+      <add-to-group group-id="VcsGlobalGroup" anchor="last"/>
     </group>
     <group id="StarteamFilePopupGroup" class="com.intellij.vcs.starteam.actions.StarteamGroup" popup="true" >
       <add-to-group group-id="VcsGroup" anchor="last"/>
+      <add-to-group group-id="VcsGlobalGroup" anchor="after" relative-to-action="Vcs.Specific" />
     </group>
 
     <action id="Starteam.ShowDiffAction" class="com.intellij.vcs.starteam.actions.ShowDiffAction"/>

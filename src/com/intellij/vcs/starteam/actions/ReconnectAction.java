@@ -6,6 +6,7 @@ import com.intellij.openapi.vcs.VcsException;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.vcs.starteam.StarteamBundle;
 import com.intellij.vcs.starteam.StarteamVcs;
+import com.intellij.vcs.starteam.StarteamVcsRevisionNumber;
 
 /**
  * @author ddmoore
@@ -20,6 +21,7 @@ public class ReconnectAction extends BasicAction {
   }
 
   protected void perform(Project project, StarteamVcs activeVcs, VirtualFile file) throws VcsException {
+      StarteamVcsRevisionNumber.clearLabelsCache();
     activeVcs.doShutdown();
     activeVcs.doStart();
   }

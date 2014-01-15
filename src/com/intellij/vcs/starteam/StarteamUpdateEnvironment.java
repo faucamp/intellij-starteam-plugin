@@ -3,14 +3,21 @@ package com.intellij.vcs.starteam;
 import com.intellij.openapi.options.Configurable;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.progress.ProgressIndicator;
+import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.vcs.FilePath;
 import com.intellij.openapi.vcs.VcsException;
 import com.intellij.openapi.vcs.VcsKey;
-import com.intellij.openapi.vcs.update.*;
-import com.intellij.openapi.util.Ref;
-import com.starbase.starteam.*;
-import org.jetbrains.annotations.Nullable;
+import com.intellij.openapi.vcs.update.FileGroup;
+import com.intellij.openapi.vcs.update.SequentialUpdatesContext;
+import com.intellij.openapi.vcs.update.UpdateEnvironment;
+import com.intellij.openapi.vcs.update.UpdateSession;
+import com.intellij.openapi.vcs.update.UpdatedFiles;
+import com.starteam.File;
+import com.starteam.Folder;
+import com.starteam.exceptions.ServerException;
+import com.starteam.exceptions.TypeNotFoundException;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.net.SocketException;
@@ -111,19 +118,19 @@ public class StarteamUpdateEnvironment implements UpdateEnvironment
     final VcsKey vcsKey = StarteamVcs.getKey();
     try
     {
-      int status = file.getStatus();
-      if( status == Status.MISSING || status == Status.OUTOFDATE )
+      File.Status status = file.getStatus();
+      if( status == File.Status.MISSING || status == File.Status.OUT_OF_DATE )
       {
         host.checkoutFile( file, false );
         groups.getGroupById( FileGroup.UPDATED_ID ).add(file.getFullName(), vcsKey, null);
       }
       else
-      if( status == Status.MODIFIED  )
+      if( status == File.Status.MODIFIED  )
       {
         groups.getGroupById( FileGroup.SKIPPED_ID ).add(file.getFullName(), vcsKey, null);
       }
       else
-      if( status == Status.MERGE  )
+      if( status == File.Status.MERGE  )
       {
         groups.getGroupById( FileGroup.MERGED_WITH_CONFLICT_ID ).add(file.getFullName(), vcsKey, null);
       }

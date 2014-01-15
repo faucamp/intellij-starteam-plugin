@@ -1,7 +1,11 @@
 package com.intellij.vcs.starteam.actions;
 
 import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.openapi.diff.*;
+import com.intellij.openapi.diff.BinaryContent;
+import com.intellij.openapi.diff.DiffManager;
+import com.intellij.openapi.diff.DiffTool;
+import com.intellij.openapi.diff.FileContent;
+import com.intellij.openapi.diff.SimpleDiffRequest;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.fileTypes.FileType;
@@ -39,7 +43,9 @@ public class ShowDiffAction extends BasicAction
       byte[] localContent = getContentOf(file);
       String upToDateFilePath = file.getPresentableUrl();
       final byte[] vcsContent = activeVcs.getFileContent(upToDateFilePath);
-      if (vcsContent == null) return;
+      if (vcsContent == null) {
+          return;
+      }
 
       /*
       final Object modalContext = context.getData(DataConstants.IS_MODAL_CONTEXT);

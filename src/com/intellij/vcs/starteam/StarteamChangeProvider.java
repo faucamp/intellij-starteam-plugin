@@ -7,14 +7,19 @@ import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.vcs.FilePath;
 import com.intellij.openapi.vcs.FileStatus;
 import com.intellij.openapi.vcs.VcsException;
-import com.intellij.openapi.vcs.changes.*;
+import com.intellij.openapi.vcs.changes.Change;
+import com.intellij.openapi.vcs.changes.ChangeListManagerGate;
+import com.intellij.openapi.vcs.changes.ChangeProvider;
+import com.intellij.openapi.vcs.changes.ChangelistBuilder;
+import com.intellij.openapi.vcs.changes.ContentRevision;
+import com.intellij.openapi.vcs.changes.CurrentContentRevision;
+import com.intellij.openapi.vcs.changes.VcsDirtyScope;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.vcsUtil.VcsUtil;
-import com.starbase.starteam.Folder;
-import com.starbase.starteam.ServerException;
-import com.starbase.starteam.Status;
-import com.starbase.starteam.TypeNotFoundException;
-import com.starbase.starteam.vts.comm.CommandException;
+import com.starteam.Folder;
+import com.starteam.exceptions.CommandException;
+import com.starteam.exceptions.ServerException;
+import com.starteam.exceptions.TypeNotFoundException;
 
 import java.io.File;
 import java.util.HashSet;
@@ -171,7 +176,7 @@ public class StarteamChangeProvider implements ChangeProvider
       return;
     }
 
-    com.starbase.starteam.File file = host.findFile( getSTCanonicPath( filePath ) );
+    com.starteam.File file = host.findFile( getSTCanonicPath( filePath ) );
 
     try
     {
@@ -186,25 +191,25 @@ public class StarteamChangeProvider implements ChangeProvider
       {
         //  In certain cases we still get status "UNKNOWN" (int 6) after the
         //  particular amount of time (even after full resync). Try to refresh.
-        try { file.updateStatus(false, true); }
+        try { file.updateStatus(); }
         catch( Exception e )
         {
           //  Nothing to do - if <updateStatus> throws an exception then most
           //  probably we deal with latest version
         }
 
-        int status = file.getStatus();
-        if( status == Status.NEW )
+        com.starteam.File.Status status = file.getStatus();
+        if( status == com.starteam.File.Status.NEW )
           filesNew.add( path );
         else
-        if( status == Status.MERGE )
+        if( status == com.starteam.File.Status.MERGE )
           builder.processChange( new Change( new STContentRevision(host, filePath ), new CurrentContentRevision( filePath ), FileStatus.MERGE ),
                                  StarteamVcs.getKey());
         else
-        if( status == Status.MODIFIED )
+        if( status == com.starteam.File.Status.MODIFIED )
           filesChanged.add( path );
         else
-        if( status == Status.MISSING )
+        if( status == com.starteam.File.Status.MISSING )
         {
           //  We have two source of information on locally deleted files:
           //  - one is stored in StarteamVcs host as a list controllable by VFS listener

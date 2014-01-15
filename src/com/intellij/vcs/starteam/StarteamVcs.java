@@ -5,7 +5,14 @@ import com.intellij.openapi.options.Configurable;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.io.FileUtil;
-import com.intellij.openapi.vcs.*;
+import com.intellij.openapi.vcs.AbstractVcs;
+import com.intellij.openapi.vcs.EditFileProvider;
+import com.intellij.openapi.vcs.FilePath;
+import com.intellij.openapi.vcs.ProjectLevelVcsManager;
+import com.intellij.openapi.vcs.VcsConfiguration;
+import com.intellij.openapi.vcs.VcsException;
+import com.intellij.openapi.vcs.VcsKey;
+import com.intellij.openapi.vcs.VcsShowConfirmationOption;
 import com.intellij.openapi.vcs.changes.ChangeListManager;
 import com.intellij.openapi.vcs.changes.ChangeProvider;
 import com.intellij.openapi.vcs.checkin.CheckinEnvironment;
@@ -18,14 +25,26 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.VirtualFileListener;
 import com.intellij.util.ThrowableConsumer;
 import com.intellij.vcsUtil.VcsUtil;
-import com.starbase.starteam.*;
-import com.starbase.util.OLEDate;
+import com.starteam.CheckinManager;
+import com.starteam.CheckinOptions;
+import com.starteam.CheckoutManager;
+import com.starteam.CheckoutOptions;
+import com.starteam.File;
+import com.starteam.Folder;
+import com.starteam.Item;
+import com.starteam.Project;
+import com.starteam.Server;
+import com.starteam.View;
+import com.starteam.ViewMemberCollection;
+import com.starteam.exceptions.ServerException;
+import com.starteam.util.DateTime;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.ByteArrayOutputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
-import java.util.Date;
+import java.io.OutputStream;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -51,9 +70,9 @@ public class StarteamVcs extends AbstractVcs
   @NonNls public static final String VERSIONED_FOLDER_SIG = ".sbas";
 
   private boolean   safeInit = false;
-  private Server    myServer;
-  private Project   myStarteamProject;
-  private View      myView;
+  private Server myServer;
+  private Project myStarteamProject;
+  private View myView;
 
   private static final char SEP = java.io.File.separatorChar;
   private StarteamCheckinEnvironment myCheckinEnvironment;
@@ -98,6 +117,7 @@ public class StarteamVcs extends AbstractVcs
       newFiles = new HashSet<String>();
     }
     catch (Throwable e) {
+         LOG.error("stvcs constructor exception", e);
     }
   }
 
@@ -105,18 +125,27 @@ public class StarteamVcs extends AbstractVcs
   public String getMenuItemText() {  return StarteamBundle.message("starteam.menu.group.text");  }
 
   public static AbstractVcs getInstance(com.intellij.openapi.project.Project project){
-    return project.getComponent(StarteamVcs.class);
+      //AbstractVcs result = project.getComponent(StarteamVcs.class);
+      AbstractVcs result = StarteamVcsAdapter.getInstance(project).getStarteamVcs();
+    return result; //project.getComponent(StarteamVcs.class);
   }
 
-  public CheckinEnvironment getCheckinEnvironment() {  return myCheckinEnvironment; }
+  public CheckinEnvironment getCheckinEnvironment() {
+      LOG.info("FNA: getCheckinEnvironment() called");
+      return myCheckinEnvironment;
+  }
 
   public RollbackEnvironment getRollbackEnvironment() {
-    return myCheckinEnvironment;
+      return myCheckinEnvironment;
   }
 
-  public UpdateEnvironment  getUpdateEnvironment()  {  return myUpdateEnvironment;  }
+  public UpdateEnvironment  getUpdateEnvironment()  {
+      return myUpdateEnvironment;
+  }
   public VcsHistoryProvider getVcsHistoryProvider() {  return myHistoryProvider;    }
-  public ChangeProvider     getChangeProvider()     {  return safeInit ? myChangeProvider : null;     }
+  public ChangeProvider     getChangeProvider()     {
+      return safeInit ? myChangeProvider : null;
+  }
   public EditFileProvider   getEditFileProvider()   {  return myEditFileProvider;   }
   private boolean           haveAlternativePath()   {  return !"".equals( myConfiguration.ALTERNATIVE_WORKING_PATH );  }
   public Configurable       getConfigurable()
@@ -159,7 +188,7 @@ public class StarteamVcs extends AbstractVcs
 
   public void deactivate()
   {
-    LocalFileSystem.getInstance().removeVirtualFileListener( listener );
+    LocalFileSystem.getInstance().removeVirtualFileListener(listener);
     if (localFileDeletionListener != null) {
       // if null -> was not activated
       LocalFileSystem.getInstance().unregisterAuxiliaryFileOperationsHandler( localFileDeletionListener );
@@ -180,7 +209,7 @@ public class StarteamVcs extends AbstractVcs
 
       connect();
       findProject();
-      
+
       if (myStarteamProject == null) return;
       findView();
       if( myView != null && myConfiguration.ALTERNATIVE_WORKING_PATH.length() != 0)
@@ -220,7 +249,7 @@ public class StarteamVcs extends AbstractVcs
       delConfirmation = vcsManager.getStandardConfirmation( VcsConfiguration.StandardConfirmation.REMOVE, baseHost );
     }
   }
-  
+
   private void registerListeners()
   {
     //  Control the appearance of project items so that we can easily
@@ -233,7 +262,7 @@ public class StarteamVcs extends AbstractVcs
     localFileDeletionListener = new STFileSystemListener();
     LocalFileSystem.getInstance().registerAuxiliaryFileOperationsHandler( localFileDeletionListener );
   }
-  
+
   private void connect()
   {
     if (LOG.isDebugEnabled()){
@@ -289,6 +318,8 @@ public class StarteamVcs extends AbstractVcs
 
   public boolean checkinFile(String path, Object parameters, Map userData) throws VcsException
   {
+      LOG.info("checkinFile() called");
+
     if (LOG.isDebugEnabled())  LOG.debug("enter: checkinFile(file='" + path + "')");
 
     refresh();
@@ -308,18 +339,17 @@ public class StarteamVcs extends AbstractVcs
        *     time is set because this produces a new revision in the repository.
        *     [Complete shit behavior]
        */
-      f.setContentModificationTime(new OLEDate( new Date() ));
+      f.setContentModifiedTime(new DateTime());
 
       if( LOG.isDebugEnabled() )
-        LOG.debug("fileStatus:" + Status.name( f.getStatus() ));
+        LOG.debug("fileStatus:" + f.getStatus());
 
-      int status = f.getStatus();
-      if( status == Status.MERGE || status == Status.OUTOFDATE )
+      File.Status status = f.getStatus();
+      if( status == File.Status.MERGE || status == File.Status.OUT_OF_DATE )
       {
+          LOG.info("checkinFile() exiting because of MERGE or OUT_OF_DATE");
           return false;
-      }
-      else
-      if( status != Status.CURRENT )
+      } else if( status != File.Status.CURRENT )
       {
         //This is workaround for the following ST 5.1 bug:
         // Create a file. Add it to ST. Modify file. Check it in.
@@ -330,10 +360,19 @@ public class StarteamVcs extends AbstractVcs
         // If the file were really out of date - the status would be Merge
         // todo Any hints on fixing it other way?
         String comment = (String)parameters;
-        boolean forceCheckin = (status == Status.UNKNOWN);
-        f.checkinFrom( new java.io.File(path.replace('/', SEP)), comment, Item.LockType.UNCHANGED, forceCheckin, false, true );
-
-        if( myConfiguration.UNLOCK_ON_CHECKIN )
+        boolean forceCheckin = (status == File.Status.UNKNOWN);
+        //f.checkinFrom( new java.io.File(path.replace('/', SEP)), comment, Item.LockType.UNCHANGED, forceCheckin, false, true );
+          LOG.info(" checkinFile(). Force checkin: " + forceCheckin);
+        CheckinOptions cio = new CheckinOptions(myView);
+        cio.setCheckinReason(comment);
+        cio.setLockType(Item.LockType.UNCHANGED);
+        cio.setForceCheckin(forceCheckin);
+        //cio.setEOLFormat
+        cio.setUpdateStatus(true);
+        CheckinManager cim = myView.createCheckinManager(cio);
+        cim.checkinFrom(f, new java.io.File(path.replace('/', SEP)));
+        cim.commit();
+          if( myConfiguration.UNLOCK_ON_CHECKIN )
         {
           unlockFile( f );
         }
@@ -361,13 +400,13 @@ public class StarteamVcs extends AbstractVcs
   public boolean checkoutFile( String path, boolean verbose ) throws VcsException
   {
     if (LOG.isDebugEnabled())
-      LOG.debug("enter: checkoutFile(file='" + path + "')");
+      LOG.info("enter: checkoutFile(file='" + path + "')");
 
     refresh();
-    File f = findFile( path );
-    if( f == null ) error( FILE_NOT_FOUND_IN_STARTEAM, path );
+    File f = findFile(path);
+    if(f == null) error(FILE_NOT_FOUND_IN_STARTEAM, path);
 
-    return checkoutFile( f, verbose );
+    return checkoutFile(f, verbose);
   }
 
   public boolean checkoutFile( File file, boolean verbose ) throws VcsException
@@ -380,29 +419,47 @@ public class StarteamVcs extends AbstractVcs
       //      cases when file statuses are really not up to date?
       try
       {
-        updateStatus( file );
+        updateStatus(file);
       }
-      catch( ServerException e )
+      catch(ServerException e)
       {
         if( e.getErrorMessage().indexOf( message ) == -1 )
           throw e;
       }
 
-      final int status = file.getStatus();
-      if (status != Status.CURRENT && status != Status.OUTOFDATE && verbose )
+      final File.Status status = file.getStatus();
+      if (status != File.Status.CURRENT && status != File.Status.OUT_OF_DATE && verbose )
       {
         int result = Messages.showYesNoDialog(StarteamBundle.message("confirmation.text.checkout.file.changed", file.getFullName() ),
                                               StarteamBundle.message("confirmation.title"),
                                               Messages.getWarningIcon());
         if (result != 0) return false;
       }
+        LOG.info("about to do checkout");
 
+        CheckoutOptions coo = new CheckoutOptions(myView);
+        coo.setLockType(Item.LockType.UNCHANGED);
+        coo.setForceCheckout(true);
+        coo.setTimeStampNow(true);
+        //coo.setEOLFormat();
+        coo.setUpdateStatus(true);
+
+
+        CheckoutManager com = myView.createCheckoutManager(coo);
       if (!"".equals(myConfiguration.ALTERNATIVE_WORKING_PATH)){
         java.io.File checkoutTo = new java.io.File(file.getFullName());
-        file.checkoutTo(checkoutTo, Item.LockType.UNCHANGED, true, false, true);
+         //file.checkoutTo(checkoutTo, Item.LockType.UNCHANGED, true, false, true);
+          // Use explicit outputstream due to Starteam SDK refusing wanting to overwrite file and me running out of time/patience
+          // com.checkoutTo(file, checkoutTo);
+          OutputStream out = new FileOutputStream(checkoutTo);
+          com.checkoutTo(file, out);
+          com.commit();
+          out.close();
       }
       else{
-        file.checkout(Item.LockType.UNCHANGED, true, false, true);
+        //file.checkout(Item.LockType.UNCHANGED, true, false, true);
+          com.checkout(file);
+          com.commit();
       }
 
       if( myConfiguration.LOCK_ON_CHECKOUT )
@@ -441,10 +498,16 @@ public class StarteamVcs extends AbstractVcs
     ByteArrayOutputStream inputStream = new ByteArrayOutputStream();
 
     try{
-      f.checkoutToStream(inputStream, Item.LockType.UNCHANGED, false);
+      //f.checkoutToStream(inputStream, Item.LockType.UNCHANGED, false);
+        CheckoutOptions coo = new CheckoutOptions(myView);
+        coo.setLockType(Item.LockType.UNCHANGED);
+        //coo.setEOLFormat();
+        CheckoutManager com = myView.createCheckoutManager(coo);
+        com.checkoutTo(f, inputStream);
+        com.commit();
     }
     catch(Exception e){
-      LOG.debug(e);
+      LOG.error(e);
       throw new VcsException(e);
     }
 
@@ -460,12 +523,12 @@ public class StarteamVcs extends AbstractVcs
     File f = findFile( path);
     if (f == null) error( FILE_NOT_FOUND_IN_STARTEAM, path );
 
-    lockFile ( f );
+    lockFile(f);
   }
 
   private static void lockFile( File file ) throws VcsException
   {
-    try {  file.lock();  }
+    try {  file.lockExclusive();  }
     catch( Exception e ){  LOG.debug(e);  throw new VcsException(e);  }
   }
 
@@ -563,7 +626,7 @@ public class StarteamVcs extends AbstractVcs
 
     if( folder != null && haveAlternativePath() )
       folder.setAlternatePathFragment( currentPath );
-    
+
     return folder;
   }
 
@@ -582,7 +645,7 @@ public class StarteamVcs extends AbstractVcs
   }
 
   private static void updateStatus(File f) throws IOException {
-    f.updateStatus(false, true);
+    f.updateStatus();
     f.update();
   }
 
@@ -596,7 +659,7 @@ public class StarteamVcs extends AbstractVcs
     final Folder folder = findFolder(folderPath);
     if (folder == null) error(FOLDER_NOT_FOUND_IN_STARTEAM, folderPath);
 
-    folder.refreshItems(folder.getTypeNames().FILE, null, 0);
+    folder.refreshItems(myServer.getTypes().FILE, null, 0);
 
     if (findFile(folderPath + SEP + fileName) != null) return;
 
@@ -605,11 +668,19 @@ public class StarteamVcs extends AbstractVcs
     java.io.File ioFile = new java.io.File(ioFolder, fileName);
     if (!ioFile.exists()) error(FILE_NOT_FOUND_ON_DISK, folderPath + SEP + fileName);
 
-    final File file = new File(folder);
-
+    final File file = File.create(folder);
     try{
-      file.addAndReturn(ioFile, fileName, "", comment, Item.LockType.UNLOCKED, false, true);
-      folder.refreshItems(folder.getTypeNames().FILE, null, 0);
+      //file.addAndReturn(ioFile, fileName, "", comment, Item.LockType.UNLOCKED, false, true);
+        CheckinOptions cio = new CheckinOptions(myView);
+        cio.setCheckinReason(comment);
+        cio.setLockType(Item.LockType.UNCHANGED);
+        //cio.setEOLFormat
+        cio.setUpdateStatus(true);
+        cio.setForceCheckin(true);
+        CheckinManager cim = myView.createCheckinManager(cio);
+        cim.checkinFrom(file, ioFile);
+        cim.commit();
+      folder.refreshItems(myServer.getTypes().FILE, null, 0);
     }
     catch(Exception e){
       LOG.debug(e);
@@ -632,11 +703,20 @@ public class StarteamVcs extends AbstractVcs
       final Folder folder = f.getParentFolder();
       f.setName(newName);
       boolean forceCheckin = false;
-      if (f.getStatus() == Status.UNKNOWN){
+      if (f.getStatus() == File.Status.UNKNOWN){
         forceCheckin = true;
       }
-      f.checkinFrom(new java.io.File((folder.getPath() + "/" + newName).replace('/', SEP)), comment, Item.LockType.UNCHANGED, forceCheckin, false, true);
-      folder.refreshItems(folder.getTypeNames().FILE, null, 0);
+      //f.checkinFrom(new java.io.File((folder.getPath() + "/" + newName).replace('/', SEP)), comment, Item.LockType.UNCHANGED, forceCheckin, false, true);
+        CheckinOptions cio = new CheckinOptions(myView);
+        cio.setCheckinReason(comment);
+        cio.setLockType(Item.LockType.UNCHANGED);
+        cio.setForceCheckin(forceCheckin);
+        //cio.setEOLFormat
+        cio.setUpdateStatus(true);
+        CheckinManager cim = myView.createCheckinManager(cio);
+        cim.checkinFrom(f, new java.io.File((folder.getPath() + "/" + newName).replace('/', SEP)));
+        cim.commit();
+        folder.refreshItems(myServer.getTypes().FILE, null, 0);
     }
     catch(Exception e){
       LOG.debug(e);
@@ -663,7 +743,7 @@ public class StarteamVcs extends AbstractVcs
 
       final File[] files = getFiles( folder );
       for (File file : files) updateStatus(file);
-      folder.refreshItems(folder.getTypeNames().FILE, null, 0);
+      folder.refreshItems(myServer.getTypes().FILE, null, 0);
     }
     catch(Exception e){
       LOG.debug(e);
@@ -693,7 +773,7 @@ public class StarteamVcs extends AbstractVcs
       final File[] files = getFiles( folder );
       for( int i = 0; i < files.length; i++ )
         updateStatus( files[ i ] );
-      folder.refreshItems(folder.getTypeNames().FILE, null, 0);
+      folder.refreshItems(myServer.getTypes().FILE, null, 0);
     }
     catch(Exception e){
       LOG.debug(e);
@@ -766,11 +846,12 @@ public class StarteamVcs extends AbstractVcs
     Folder oldFolder = folder.getParentFolder();
 
     try{
-      folder.move(newParent);
+      folder.moveTo(newParent);
+
 //      folder.update();
 
-      newParent.refreshItems(newParent.getTypeNames().FILE, null, 0);
-      oldFolder.refreshItems(oldFolder.getTypeNames().FILE, null, 0);
+      newParent.refreshItems(myServer.getTypes().FILE, null, 0);
+      oldFolder.refreshItems(myServer.getTypes().FILE, null, 0);
 //      newParent.refreshItems(newParent.getTypeNames().FOLDER, null, 1);
 //      oldFolder.refreshItems(oldFolder.getTypeNames().FOLDER, null, 1);
 
@@ -824,12 +905,20 @@ public class StarteamVcs extends AbstractVcs
     Folder oldFolder = f.getParentFolder();
 
     try{
-      f.move(newFolder);
+      f.moveTo(newFolder);
       f.setName(newName);
-      f.checkinFrom(new java.io.File((newParentPath + "/" + newName).replace('/', SEP)), comment, Item.LockType.UNCHANGED, true, false, true);
+      //f.checkinFrom(new java.io.File((newParentPath + "/" + newName).replace('/', SEP)), comment, Item.LockType.UNCHANGED, true, false, true);
+        CheckinOptions cio = new CheckinOptions(myView);
+        cio.setCheckinReason(comment);
+        cio.setLockType(Item.LockType.UNCHANGED);
+        //cio.setEOLFormat
+        cio.setUpdateStatus(true);
+        CheckinManager cim = myView.createCheckinManager(cio);
+        cim.checkinFrom(f, new java.io.File((newParentPath + "/" + newName).replace('/', SEP)));
+        cim.commit();
 
-      newFolder.refreshItems(newFolder.getTypeNames().FILE, null, 0);
-      oldFolder.refreshItems(oldFolder.getTypeNames().FILE, null, 0);
+      newFolder.refreshItems(myServer.getTypes().FILE, null, 0);
+      oldFolder.refreshItems(myServer.getTypes().FILE, null, 0);
     }
     catch(Exception e){
       LOG.debug(e);
@@ -839,6 +928,7 @@ public class StarteamVcs extends AbstractVcs
 
   public void addDirectory(String parentPath, String name, Object parameters) throws VcsException
   {
+      LOG.info("addDirectory called");
     if (LOG.isDebugEnabled())
       LOG.debug("enter: addDirectory(parentPath='" + parentPath + "' name='" + name + "')");
 
@@ -857,15 +947,19 @@ public class StarteamVcs extends AbstractVcs
 
   public void refresh() throws VcsException
   {
+      LOG.info("refresh() called");
     if( LOG.isDebugEnabled() ) LOG.debug("enter: refresh()");
+
+      StarteamVcsRevisionNumber.clearLabelsCache();
 
     try {
       myView.refreshFolders();
     }
     catch( Exception e){
-      LOG.debug( e );
+      LOG.warn( e );
       throw new VcsException( e );
     }
+      LOG.info("refresh() done");
   }
 
   private Folder addFolder(final Folder parentFolder, String name)
@@ -885,32 +979,32 @@ public class StarteamVcs extends AbstractVcs
   }
 
   public Folder[] getSubFolders(Folder folder) {
-    final Item[] items = folder.getItems(myServer.getTypeNames().FOLDER);
-    Folder[] result = new Folder[items.length];
-    System.arraycopy(items, 0, result, 0, items.length);
+    final ViewMemberCollection items = folder.getItems(myServer.getTypes().FOLDER);
+    Folder[] result = new Folder[items.size()];
+    System.arraycopy(items.toArray(new Folder[0]), 0, result, 0, items.size());
     return result;
   }
 
   public File[] getFiles(Folder folder) {
-    final Item[] items = folder.getItems(myServer.getTypeNames().FILE);
-    File[] result = new File[items.length];
-    System.arraycopy(items, 0, result, 0, items.length);
+    final ViewMemberCollection items = folder.getItems(myServer.getTypes().FILE);
+    File[] result = new File[items.size()];
+    System.arraycopy(items.toArray(new File[0]), 0, result, 0, items.size());
     return result;
   }
 
   public void refreshFolder( Folder folder )
   {
-    folder.refreshItems(myServer.getTypeNames().FILE, null, -1 );
+    folder.refreshItems(myServer.getTypes().FILE, null, -1 );
   }
 
   public boolean isFileIgnored( VirtualFile file )
   {
-    ChangeListManager mgr = ChangeListManager.getInstance( myProject );
+    ChangeListManager mgr = ChangeListManager.getInstance(myProject);
     return (file != null) && mgr.isIgnoredFile( file );
   }
 
   public boolean fileIsUnderVcs( FilePath path ) {  return fileIsUnderVcs( path.getVirtualFile() );  }
-  
+
   public boolean fileIsUnderVcs( VirtualFile file )
   {
     //  Pay attention to the cases when no Starteam configuration has been made yet
@@ -927,7 +1021,7 @@ public class StarteamVcs extends AbstractVcs
   private String getRootFolderPath()
   {
     if( myView == null )  return null;
-    
+
     Folder folder = myView.getRootFolder();
     return haveAlternativePath() ? myConfiguration.ALTERNATIVE_WORKING_PATH : folder.getPath();
   }
@@ -941,7 +1035,7 @@ public class StarteamVcs extends AbstractVcs
 
   public boolean isVersionedDirectory( VirtualFile dir )
   {
-    final VirtualFile versionFile = dir.findChild( VERSIONED_FOLDER_SIG );
+    final VirtualFile versionFile = dir.findChild(VERSIONED_FOLDER_SIG);
     return (versionFile != null && versionFile.isDirectory());
   }
 

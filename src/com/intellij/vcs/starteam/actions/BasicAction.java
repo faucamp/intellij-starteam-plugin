@@ -7,6 +7,7 @@ import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.PlatformDataKeys;
 import com.intellij.openapi.actionSystem.Presentation;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.ContentIterator;
@@ -27,6 +28,8 @@ import java.util.List;
  * @author mike
  */
 public abstract class BasicAction extends AnAction {
+
+    private static final Logger LOG = Logger.getInstance("#com.intellij.vcs.starteam.actions.BasicAction");
   public void actionPerformed(AnActionEvent e) {
     final Project project = e.getData(PlatformDataKeys.PROJECT);
     final VirtualFile[] files = VcsUtil.getVirtualFiles(e);
@@ -41,8 +44,9 @@ public abstract class BasicAction extends AnAction {
 
     //  Take into account (...==null) ANY problem with StarteamVCS state -
     //  absence of starteam jdk, timeouts, etc.
-    if (files.length == 0 || starteamVcs == null) return;
-
+    if (files.length == 0 || starteamVcs == null) {
+        return;
+    }
     if (!ProjectLevelVcsManager.getInstance(project).checkAllFilesAreUnder(starteamVcs, files)) {
       FileDocumentManager.getInstance().saveAllDocuments();
     }
@@ -50,6 +54,7 @@ public abstract class BasicAction extends AnAction {
     final String actionName = getActionName();
 
     AbstractVcsHelper helper = AbstractVcsHelper.getInstance(project);
+
     LocalHistoryAction action = LocalHistory.getInstance().startAction(actionName);
 
     try {

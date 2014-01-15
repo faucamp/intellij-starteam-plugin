@@ -1,6 +1,7 @@
 package com.intellij.vcs.starteam.actions;
 
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.vcs.AbstractVcs;
@@ -15,6 +16,9 @@ import com.intellij.vcs.starteam.StarteamVcs;
  */
 public class RefreshAction extends BasicAction
 {
+
+    private static final Logger LOG = Logger.getInstance("#com.intellij.vcs.starteam.actions.ShowDiffAction");
+
   protected String getActionName() {
     return StarteamBundle.message("local.vcs.action.name.refresh");
   }

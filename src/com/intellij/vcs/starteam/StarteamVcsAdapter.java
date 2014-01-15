@@ -11,6 +11,7 @@ package com.intellij.vcs.starteam;
 import com.intellij.openapi.application.ApplicationNamesInfo;
 import com.intellij.openapi.application.PathManager;
 import com.intellij.openapi.components.ProjectComponent;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.options.Configurable;
 import com.intellij.openapi.options.ConfigurationException;
 import com.intellij.openapi.project.Project;
@@ -41,6 +42,8 @@ import java.util.List;
 
 public class StarteamVcsAdapter extends AbstractVcs implements ProjectComponent, JDOMExternalizable
 {
+
+    private static final Logger LOG = Logger.getInstance("#com.intellij.vcs.starteam.StarteamVcsAdapter");
   @NonNls private static final String PERSISTENCY_REMOVED_TAG = "StarbasePersistencyRemovedFile";
   @NonNls private static final String PERSISTENCY_RENAMED_TAG = "StarbasePersistencyRenamedFile";
   @NonNls private static final String PERSISTENCY_NEW_FILE_TAG = "StarbasePersistencyNewFile";
@@ -74,7 +77,7 @@ public class StarteamVcsAdapter extends AbstractVcs implements ProjectComponent,
     // no 'start' any more, but - init vcs
     try
     {
-      Class.forName("com.starbase.starteam.Project");
+      Class.forName("com.starteam.Project");
       myStarteamVcs = new StarteamVcs( myProject, config );
     }
     catch (Throwable e) {
@@ -97,7 +100,8 @@ public class StarteamVcsAdapter extends AbstractVcs implements ProjectComponent,
     if (getStarteamVcs() != null) getStarteamVcs().disposeComponent();
   }
 
-  public void initComponent() {}
+  public void initComponent() {
+  }
 
   public Configurable getConfigurable() {
     return (getStarteamVcs() != null) ? getStarteamVcs().getConfigurable() : new MyConfigurable();
